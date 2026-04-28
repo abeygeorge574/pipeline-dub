@@ -1,0 +1,426 @@
+Here's the prompt. It's detailed because Claude Code works best with full context — you can paste it as-is.
+
+---
+
+# Build a cross-lingual video dubbing pipeline evaluation harness
+
+## What I'm building and why
+
+I'm building an end-to-end video dubbing pipeline that takes a Tamil/Hindi source video and produces a dubbed English version preserving voice identity, emotional delivery, and lip sync. This is for a media/post-production company (Postudio) targeting Indian content for global English-speaking audiences.
+
+The strategic context: ElevenLabs Dubbing Studio exists but produces poor quality on Indic languages (verified through our own testing). Their pipeline fails on diarization, translation duration-fitting, and uses a weaker v2 TTS model internally. We're building our own pipeline (Path B) that uses best-in-class components per stage, with ElevenLabs v3 TTS for synthesis (the part they actually do well) and either OSS or other commercial models for everything else.
+
+I want to evaluate multiple options per pipeline component, compare them with rigorous metrics, and identify the best architecture before locking it in. For TTS I've already decided on ElevenLabs v3 — skip TTS evaluation. For STS (speech-to-speech voice conversion) I'm handling that separately — skip STS evaluation entirely.
+
+## Input data
+
+I have one source video at `dub_original.mp4`. This is a Tamil-language video that I'll use today as the test source. Tomorrow I'll swap to a Hindi source. Build the harness so language is a config variable, not hardcoded.
+
+The video has typical dubbing characteristics: multiple speakers, dialogue with background music/SFX, varying emotional delivery, real-world audio (not studio-clean).
+
+## Pipeline components to evaluate
+
+Build separate Jupyter notebooks for each component, in this order:
+
+1. **Stem separation** — extract clean dialogue from background music/SFX
+2. **Diarization** — identify who speaks when (I have existing diarization data from our platform that I'll plug in later, but build the harness to test fresh diarization too)
+3. **ASR** — transcribe source language speech to text
+4. **Translation + emotion tagging** — translate to English with duration awareness and ElevenLabs v3 Audio Tags for emotion
+5. **(Skip TTS — using ElevenLabs v3 directly)**
+6. **(Skip STS — handled separately)**
+7. **Audio assembly** — stitch generated TTS segments back to original timeline with original music/SFX
+8. **Lip sync** — align mouth movements to dubbed audio
+
+Each notebook should be self-contained but they share intermediate outputs. Set up a directory structure like:
+
+```
+/dub_pipeline
+  /input
+    dub_original.mp4
+  /intermediate
+    /audio_extracted
+    /stems
+    /diarization
+    /transcription
+    /translation
+    /tts_output
+    /assembled
+    /lip_synced
+  /notebooks
+    01_audio_extraction.ipynb
+    02_stem_separation.ipynb
+    03_diarization.ipynb
+    04_asr.ipynb
+    05_translation_emotion.ipynb
+    06_tts.ipynb
+    07_audio_assembly.ipynb
+    08_lip_sync.ipynb
+  /results
+    component_metrics.csv
+    final_output.mp4
+  config.py
+```
+
+## Per-component requirements
+
+For each component notebook, build out:
+
+1. **Setup cell**: install dependencies, create output directory, load shared config
+2. **Input loading**: load output from previous component (e.g., diarization loads from stem separation output)
+3. **Test multiple alternatives**: at least 3-4 OSS options + 1-2 commercial options where free trials exist
+4. **Metric computation**: compute relevant metrics per alternative (defined below per component)
+5. **Subjective listening/visualization**: cells to listen to or view outputs for each alternative
+6. **Comparison table**: pandas dataframe summarizing all alternatives
+7. **Recommended winner**: programmatic selection based on metrics + flag for manual review
+
+For commercial APIs that need keys: prompt me at runtime via `getpass.getpass()` or environment variable. Don't hardcode anything. Specifically:
+- ElevenLabs API key (I have one, will paste when prompted)
+- AudioShake API key (free trial — I'll sign up if needed)
+- Gemini API key (I have one)
+
+For OSS models, auto-download via Hugging Face or model registry where possible.
+
+## Component-specific details
+
+### 1. Audio extraction (preliminary step)
+
+Extract audio from `dub_original.mp4` to a clean WAV file at 44.1kHz. Save as `audio_extracted/source_audio.wav`. Get video duration and basic info. This feeds everything downstream.
+
+### 2. Stem separation
+
+**OSS to test:**
+- BS-RoFormer (via audio-separator package, model: `model_bs_roformer_ep_317_sdr_12.9755.ckpt`)
+- Mel-Band RoFormer (audio-separator)
+- HTDemucs-FT (audio-separator)
+- MDX-Net (audio-separator)
+
+**Commercial to test:**
+- AudioShake API (free trial — 10 credits, no credit card required)
+- ElevenLabs Audio Isolation API (use my existing subscription)
+
+**Metrics:**
+- Real-time factor (RTF) — separation time / audio duration
+- SDR/SIR/SAR via mir_eval (only if we have ground truth — likely we don't, so skip these or note as N/A)
+- Subjective dialogue clarity (manual rating cell, 1-5 scale)
+- Subjective music preservation (1-5 scale)
+- Downstream ASR impact (run ASR on each output, compare WER if we have transcript)
+
+Save the best output to `intermediate/stems/vocals.wav` and `intermediate/stems/instrumental.wav` for downstream use.
+
+### 3. Diarization
+
+**OSS to test:**
+- Pyannote 3.1 (default config)
+- Pyannote 3.1 with known speaker count specified
+- NVIDIA NeMo Sortformer
+- WhisperX (combined ASR+diarization)
+
+**Commercial to test:**
+- AssemblyAI Universal-3 Pro (free tier, no CC)
+- Speechmatics (480 min/mo free)
+- Deepgram Nova-3 (free tier)
+
+**Metrics:**
+- DER (Diarization Error Rate) — only if ground truth available; build the metric calculation but flag if we don't have ground truth
+- Speaker count detected vs. actual (manual ground truth from listening)
+- Speaker confusion rate (subjective check)
+- Latency per minute of audio
+- Cost per minute (where applicable)
+
+Output: RTTM file or equivalent JSON with speaker turns + timestamps.
+
+### 4. ASR
+
+**OSS to test:**
+- IndicWhisper (AI4Bharat, Hugging Face)
+- Whisper Large V3 (OpenAI baseline)
+- Collabora Whisper-Hindi v2 (when running on Hindi)
+- NVIDIA NeMo Conformer (Hindi/Tamil specific if available)
+
+**Commercial to test:**
+- Gemini ASR via API
+- Deepgram Nova-3 Multilingual
+- ElevenLabs Scribe v2
+
+**Metrics:**
+- WER (Word Error Rate) — needs ground truth transcript; if we don't have one, generate one with a high-quality reference model (Gemini or Whisper Large V3) and compare others against it (note this is pseudo-ground-truth)
+- CER (Character Error Rate)
+- Hallucination rate — count of inserted text in silence regions, manually flagged or programmatically detected
+- Latency per minute
+- Cost per minute
+
+Output: structured JSON with timestamps + transcript text per segment, aligned with diarization output.
+
+### 5. Translation + emotion tagging
+
+This is one of our differentiating components. The architecture is:
+- Source audio analysis: extract pitch contour, energy, speaking rate using librosa per segment
+- LLM call: feed source text + audio features + target duration to Gemini, get back English translation with ElevenLabs v3 Audio Tags inline
+
+**To test:**
+- Gemini 2.5 Pro / Flash with engineered prompt
+- GPT-4o or Claude as comparison if accessible
+
+**Prompt structure** (build this and iterate):
+```
+Source language: {Tamil/Hindi}
+Source text: "{transcribed segment}"
+Source duration: {X} seconds
+Source emotion (from audio analysis): {pitch_high, fast_pace, energetic / calm / etc.}
+
+Translate to American English with these requirements:
+1. Target spoken duration: ~{X} seconds (roughly {Y} English words at normal pace)
+2. Inject ElevenLabs v3 Audio Tags for emotion. Allowed tags only: [angry], [sad], [excited], [calm], [scared], [whispers], [shouts], [laughs], [sighs], [gasps], [fast-paced], [drawn out], [sarcastic], [hesitant]
+3. Use natural American English idioms, not literal translation
+4. Be concise — fitting duration takes priority over preserving every word
+5. Use punctuation for pacing: commas (brief pause), em-dashes (medium), ellipses (longer + hesitation)
+
+Return JSON: {"translation": "...", "estimated_duration": X, "tags_used": [...]}
+```
+
+**Metrics:**
+- Duration fit ratio: actual TTS output duration / target duration (target: 0.9 to 1.1)
+- BLEU score against reference translation (if available) — comparing to a simple baseline translation
+- Tag appropriateness: subjective rating per segment
+- Cost per segment
+
+### 6. TTS — SKIP, using ElevenLabs v3 directly
+
+Just build a thin wrapper that calls ElevenLabs v3 TTS API with the translated text + tags + a fixed voice ID. Don't evaluate alternatives. Output goes to `intermediate/tts_output/segment_{N}.wav`.
+
+Configuration:
+- Model: `eleven_v3` (or whatever the current v3 model_id is)
+- Use plain TTS API at `/v1/text-to-speech/{voice_id}`, NOT Studio API or Dubbing API
+- Voice ID: prompt user for it (I'll provide a library voice ID for testing)
+- Settings: stability 0.5, similarity_boost 0.75, style 0
+- Output format: PCM 44100 (since I'm on Pro plan)
+- Pass `previous_text` and `next_text` parameters between segments for prosody continuity
+
+### 7. STS — SKIP entirely
+
+Don't build this notebook. I'm handling voice conversion separately.
+
+### 8. Audio assembly
+
+Stitch TTS segments back to original timeline:
+- Place each TTS segment at its original source timestamp
+- Mix with instrumental track from stem separation
+- Handle silence gaps (use original silence from source audio for ambient continuity)
+- Loudness normalize to -16 LUFS (broadcast standard) or match source levels
+
+**Tools:** pydub, ffmpeg, or pyloudnorm for LUFS normalization.
+
+**Metrics:**
+- LUFS measurement on output
+- Timing alignment check (verify no segment has drifted from source timestamp)
+- A/B listening: stitched output vs. original
+
+### 9. Lip sync
+
+**OSS to test:**
+- LatentSync (ByteDance, diffusion-based, current OSS SOTA)
+- MuseTalk 1.5 (Tencent, real-time capable)
+- Wav2Lip / Wav2Lip-HD (baseline, GAN-based)
+
+**Commercial to test:**
+- Sync.so Lipsync-2 (free tier with API access)
+- VEED via fal.ai ($0.40/min)
+
+**Metrics:**
+- LSE-D (Lip Sync Error Distance) via SyncNet — target < 1.5 for OTT quality
+- LSE-C (confidence)
+- ArcFace identity preservation cosine similarity (target > 0.85)
+- Subjective rating: mouth shape accuracy 1-5
+- Processing time per minute of video
+- Output resolution preserved vs. degraded
+
+Output: final dubbed video at `results/final_output.mp4`.
+
+## Configuration file
+
+Build a `config.py` with:
+
+```python
+SOURCE_LANGUAGE = "ta"  # tomorrow swap to "hi"
+TARGET_LANGUAGE = "en"
+SOURCE_VIDEO_PATH = "input/dub_original.mp4"
+
+# Output directories (auto-created)
+INTERMEDIATE_DIR = "intermediate"
+RESULTS_DIR = "results"
+
+# Sample rates
+TTS_SAMPLE_RATE = 44100
+ASR_SAMPLE_RATE = 16000
+
+# ElevenLabs
+ELEVENLABS_MODEL_ID = "eleven_v3"
+ELEVENLABS_VOICE_ID = ""  # Will be set at runtime
+
+# API keys loaded from environment or prompted
+```
+
+## Build order
+
+Build the notebooks in dependency order. Run each one and verify it produces usable output before moving to the next:
+
+1. Audio extraction first (gives stem separation an input)
+2. Stem separation
+3. Diarization (can run in parallel with ASR if not using WhisperX)
+4. ASR
+5. Translation + emotion tagging
+6. TTS wrapper
+7. Audio assembly
+8. Lip sync
+
+After each notebook runs successfully, save the chosen winner output for downstream use. Don't re-run upstream components when working on downstream ones.
+
+## Important behaviors
+
+- **Don't over-engineer.** This is an evaluation harness, not production code. Single-pass through, results saved, move on. No fancy class hierarchies, no abstract base classes, just working notebooks.
+- **Prompt for API keys at runtime** when needed using `getpass.getpass()`. Don't ask me for them upfront — only when each notebook actually needs them.
+- **Fail gracefully.** If a model can't load (missing dependency, OOM, API error), log it and continue with remaining alternatives. Don't crash the whole notebook.
+- **Cache aggressively.** If a model has already produced output, skip re-running it unless I explicitly request a refresh. Stem separation and ASR are slow; don't redo work.
+- **Document time spent per cell.** Time each model run so I know which are fast vs. slow.
+- **Listening cells matter.** For audio components, include `IPython.display.Audio` cells so I can listen to outputs inline. For video, save and provide path.
+- **Tell me when you're stuck.** If a model needs setup that's beyond reasonable (compiling from source, paid-only API access I don't have), document it and skip rather than spending hours debugging.
+- **Sanity-check before going deep.** Before building all 8 notebooks, confirm your overall plan with me — directory structure, model selection per component, metric choices. I'd rather sanity-check for 10 minutes than have you build in a wrong direction for hours.
+
+## What I want at the end of today
+
+A working pipeline harness where:
+1. I can run each notebook in sequence
+2. Each notebook tests multiple alternatives and shows me comparison data
+3. Audio outputs are listenable inline
+4. The final output is a dubbed video at `results/final_output.mp4`
+5. Switching from Tamil to Hindi tomorrow only requires changing one config variable
+
+I'm not optimizing for production quality today. I'm validating that the architecture works end-to-end and identifying which components are good enough vs. which need more work.
+
+Start by reading this whole prompt, then propose your plan for the directory structure and notebook breakdown before writing code. Confirm dependencies you'll install (audio-separator, pyannote, transformers, elevenlabs, librosa, ffmpeg, etc.) before installing them.
+
+---
+
+That's the prompt. A few notes for you specifically:
+
+**One thing I deliberately didn't specify**: the exact GPU/compute environment. Claude Code will figure out from your machine what's available. If you're on a laptop without a strong GPU, some OSS models (BS-RoFormer especially) will be slow or OOM. Tell Claude Code what hardware you have when it asks.
+
+**Watch out for**: the lip sync notebook will be the most painful. LatentSync needs specific CUDA versions and weights download. Sync.so API is the easier path. If lip sync becomes a multi-hour debugging session, skip it for today and listen to audio-only output instead.
+
+**On the "sanity check the plan first" instruction**: don't skip this. Claude Code with a complex multi-notebook task tends to over-engineer. Make it show you the plan before building.
+
+**On API costs**: AudioShake free trial is 10 credits which is enough for one test. ElevenLabs Audio Isolation uses your existing credits. Gemini ASR will cost real money if you process the full video — limit to a few test segments first.
+
+Paste this into Claude Code and start with audio extraction. Should be running by the time we talk next.
+
+
+Project context — Postudio cross-lingual dubbing pipeline
+What this is
+This is the first version of an AI dubbing pipeline being built at Postudio, a cloud post-production company in India. We're building it to take Indian-language source content (Tamil, Hindi, eventually other Indic languages) and produce broadcast-quality English dubs with voice identity, emotional fidelity, and lip sync preserved.
+The pipeline will eventually power a commercial product sold to Indian media companies (broadcasters, streaming platforms, microdrama producers, content studios) who currently pay for manual dubbing or use ElevenLabs Dubbing Studio with poor results on Indic languages.
+This evaluation harness is the v0 architecture validation. Once we lock the architecture, we'll build production code on top.
+Strategic positioning
+We are NOT building a generic dubbing tool to compete with ElevenLabs globally. We are building the best dubbing tool specifically for Indian-language content going to global English audiences (and eventually other target languages).
+Our moats vs. ElevenLabs:
+
+Editor-corrected diarization data accumulated through Postudio's existing platform
+1500+ hours of broadcast-grade audio data we can use for training
+Distribution through Postudio's existing customer relationships
+Workflow integration inside Postudio's editor platform
+Fine-tuning on Indic content over time
+Pronunciation dictionary for Indic names/terms built from QC corrections
+
+ElevenLabs has technology lead on TTS itself. We don't compete with that — we use ElevenLabs v3 TTS API as a component. Our pipeline wraps it with components ElevenLabs does poorly: Indic diarization, duration-aware translation, voice identity preservation, prosody handling, workflow integration.
+Critical product requirements — DO NOT compromise on these
+Voice identity preservation is non-negotiable
+When a Tamil actor speaks in the source video, the English output must sound like THE SAME PERSON speaking English — not a generic English voice replacing them. This is the entire point of dubbing. Without voice identity preservation, we're just generating English audio that happens to be timed to a video, which is not a product anyone pays for.
+This means:
+
+We MUST use voice cloning, not library voices
+We MUST clone the source actor's voice from source audio segments
+We MUST use the cloned voice for all generations of that character
+
+Concretely: for ElevenLabs v3 TTS, this means creating an Instant Voice Clone (IVC) from a clean sample of each character's source audio, then generating English dialogue using that IVC as the voice.
+DO NOT default to library voices "for simplicity" or "for testing." Library voices are useful only for sanity-checking that the TTS API call works at all. Once we know the TTS pipeline runs, switch immediately to cloned voices. If you're unsure, ask before defaulting to library voices.
+American English accent is non-negotiable
+Output must be American English regardless of source language. Indian English with Tamil/Hindi accent is NOT acceptable for our customer base — they're producing content for global English-speaking audiences who expect American or neutral international English.
+This creates a tension with voice cloning: cloning a Tamil actor's voice will leak Tamil accent into the English output. We will solve this with one of:
+
+ElevenLabs v3 Audio Tags steering toward American accent
+Post-processing accent conversion (Krisp, Tomato.ai, Respeecher) if accent leak is too strong
+STS pass with American voice as target (handled separately, not in this pipeline today)
+
+For TODAY's testing, accept some accent leak as a known issue. Document segments where accent leak is severe so we can prioritize accent conversion as a follow-up component.
+Duration fitting matters more than translation perfection
+When translating source dialogue to English, the output duration MUST fit the source segment duration. A 4-second Tamil segment should produce a ~4-second English TTS output. If the translation produces 6 seconds of English, we cannot use it — speeding up to fit the gap creates the unnatural rushed delivery that ruins ElevenLabs Dubbing Studio's output.
+This means translation must be duration-aware from the start, not translated freely and stretched to fit. The LLM call for translation must include target duration as a hard constraint and be told to be concise to fit.
+Emotion preservation matters
+Source actors deliver lines with emotion — anger, sadness, excitement, whispers. The English output must preserve that emotional delivery, not produce flat neutral readings. ElevenLabs v3 supports this via Audio Tags ([angry], [excited], [whispers], [shouts] etc.) — these tags must be inserted into translated text based on source emotion analysis.
+Source emotion analysis options: prosodic feature extraction (pitch contour, energy, speaking rate via librosa) plus source text context, fed to LLM with instruction to inject appropriate Audio Tags.
+What customers will and won't accept
+Customers (Indian media companies) will accept:
+
+Some accent leak from source language
+Library voices ONLY if explicitly chosen for non-character roles (narrator, off-screen voice)
+Translation that adapts cultural references appropriately rather than literal translation
+Songs/music left in source language with subtitles (industry convention)
+
+Customers will NOT accept:
+
+Generic English voices replacing recognizable actor voices
+Robotic or monotone delivery that lacks emotion
+Word-for-word literal translation
+Sped-up or stretched audio that sounds unnatural
+Audio that's clearly AI-generated to a casual listener
+
+The bar is "indistinguishable from human dubbing for casual viewers" — not "perfect" but "good enough that the average viewer doesn't notice it's AI."
+Technical architecture decisions already made
+These are decided. Don't propose alternatives:
+
+TTS: ElevenLabs v3 plain TTS API (not Studio API, not Dubbing API)
+Voice cloning: ElevenLabs IVC (Instant Voice Clone), one clone per character per episode
+Translation: Gemini API with engineered prompt for duration awareness + emotion tagging
+Source: Tamil today, Hindi tomorrow, language-agnostic architecture
+Output: American English, broadcast-quality (44.1kHz)
+
+These are open and being evaluated:
+
+Stem separation: testing OSS (BS-RoFormer, Mel-RoFormer, HTDemucs) vs commercial (AudioShake, ElevenLabs Audio Isolation)
+Diarization: testing OSS (Pyannote 3.1) vs commercial (AssemblyAI, Speechmatics, Deepgram). Note: we have editor-corrected diarization data from Postudio platform that may serve as ground truth or replace fresh diarization entirely
+ASR: testing OSS (IndicWhisper) vs commercial (Gemini, Deepgram, Scribe v2)
+Lip sync: testing OSS (LatentSync, MuseTalk) vs commercial (Sync.so)
+
+Reasoning style for this project
+When making decisions or proposing alternatives, default to:
+
+"Use the cloned voice" over "use a library voice for simplicity"
+"Preserve emotion via tags" over "neutral delivery is fine for testing"
+"Fit duration via translation constraint" over "speed up audio to fit"
+"Test commercial APIs as a benchmark" over "OSS is always better"
+"Keep architecture language-agnostic" over "hardcode for Tamil"
+
+When in doubt about a product decision, ASK. Defaulting to "simpler for testing" often defaults away from the product requirements and creates work to undo later. The right test of a dubbing pipeline is one that produces dubbed output a customer would accept, not one that just runs end-to-end with placeholder components.
+Out of scope today
+
+STS (speech-to-speech voice conversion) — handled separately, not in this pipeline
+Production deployment, error handling, retry logic — this is an evaluation harness
+Multi-episode batch processing — single video for now
+Cost optimization — quality first, cost second
+Songs/music handling — known limitation, defer
+Whispered or shouted extreme emotion — known hard cases, defer
+Children's voices, elderly voices — known hard cases, defer
+Crowd scenes with overlapping voices — known hard cases, defer
+
+Success criteria for today
+A pipeline that:
+
+Takes dub_original.mp4 (Tamil source) as input
+Produces a dubbed English video at results/final_output.mp4
+Where each character's English voice sounds like the original character (cloned voice, not library voice)
+Where emotion is preserved via Audio Tags
+Where audio fits source segment durations (no severe speedup/stretching)
+Where lip sync is at least attempted (LSE-D measured even if not optimal)
+Where each component has been tested across multiple alternatives with comparison data
+Where switching to Hindi tomorrow requires only changing config
+
+If any of these is missing, the pipeline is not done.

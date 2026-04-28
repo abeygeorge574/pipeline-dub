@@ -1,0 +1,29 @@
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.envrc
+.env
+.env.*
+*.pem
+*.key
+
+# ── Large media (transfer separately via GCS or scp) ──────────────────────────
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# ── Pipeline intermediates (generated, not source) ────────────────────────────
+dub_pipeline/intermediate/
+dub_pipeline/results/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── Claude Code internal ──────────────────────────────────────────────────────
+.claude/

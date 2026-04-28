@@ -1,0 +1,65 @@
+# ── Core / shared ─────────────────────────────────────────────────────────────
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.8
+tqdm>=4.66
+ipykernel>=6.29
+jupyter>=1.0
+ipython>=8.0
+
+# ── Audio I/O + analysis ──────────────────────────────────────────────────────
+librosa>=0.10
+soundfile>=0.12
+ffmpeg-python>=0.2.0
+soxr>=0.3          # high-quality resampler used by librosa
+pyloudnorm>=0.1
+scipy>=1.11
+
+# ── Stem separation ───────────────────────────────────────────────────────────
+# Install one of:
+#   pip install "audio-separator[cpu]"   (CPU-only)
+#   pip install "audio-separator[gpu]"   (CUDA GPU — much faster)
+# audio-separator is not listed here because the [cpu]/[gpu] extras must be
+# chosen manually. Add it after running setup.sh.
+
+# Post-processing denoiser (optional, chain after vocal extraction)
+# deepfilternet>=0.5.6   # uncomment if desired
+
+# ── PyTorch (needed by pyannote, whisper, transformers) ──────────────────────
+# Install PyTorch separately for your CUDA version:
+#   CPU  : pip install torch torchvision torchaudio
+#   CUDA : pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Listed below as cpu fallback only:
+torch>=2.1
+torchaudio>=2.1
+
+# ── Diarization ───────────────────────────────────────────────────────────────
+pyannote.audio>=3.1
+# whisperx is installed separately (see setup.sh) — pip install git+https://...
+
+# ── ASR ───────────────────────────────────────────────────────────────────────
+openai-whisper>=20231117
+transformers>=4.40
+accelerate>=0.26
+datasets>=2.18
+jiwer>=3.0         # WER / CER computation
+nltk>=3.8
+
+# ── Translation / LLM ─────────────────────────────────────────────────────────
+google-generativeai>=0.5
+sacrebleu>=2.4     # BLEU / chrF scores
+
+# ── TTS ───────────────────────────────────────────────────────────────────────
+elevenlabs>=1.2
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+mir_eval>=0.7      # SDR/SIR/SAR if ground truth available
+pesq>=0.0.4        # PESQ speech quality (optional)
+pystoi>=0.3        # STOI intelligibility (optional)
+
+# ── Lip sync evaluation ───────────────────────────────────────────────────────
+# insightface and onnxruntime for ArcFace identity preservation:
+#   pip install insightface onnxruntime   (CPU)
+#   pip install insightface onnxruntime-gpu  (GPU)
+# face-alignment for facial landmark detection:
+face-alignment>=1.3
