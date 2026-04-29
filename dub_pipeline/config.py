@@ -30,7 +30,7 @@ def get_torch_device():
     return 'cpu', torch.float32
 
 # ── Language ──────────────────────────────────────────────────────────────────
-SOURCE_LANGUAGE = "ta"          # ISO-639-1: "ta"=Tamil, "hi"=Hindi
+SOURCE_LANGUAGE = "hi"          # ISO-639-1: "ta"=Tamil, "hi"=Hindi
 TARGET_LANGUAGE = "en-US"
 
 LANGUAGE_DISPLAY = {
@@ -49,9 +49,13 @@ WHISPER_LANGUAGE_CODE = {
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-SOURCE_VIDEO_PATH   = os.path.join(PROJECT_ROOT, "input", "dub_original.mp4")
-INTERMEDIATE_DIR    = os.path.join(PROJECT_ROOT, "intermediate")
-RESULTS_DIR         = os.path.join(PROJECT_ROOT, "results")
+SOURCE_VIDEO_PATH   = os.path.join(PROJECT_ROOT, "input", "jtn.mp4")
+
+# Intermediate and results are namespaced by video filename — so switching videos
+# never overwrites a previous run. Each video gets its own isolated workspace.
+_VIDEO_ID        = os.path.splitext(os.path.basename(SOURCE_VIDEO_PATH))[0]
+INTERMEDIATE_DIR = os.path.join(PROJECT_ROOT, "intermediate", _VIDEO_ID)
+RESULTS_DIR      = os.path.join(PROJECT_ROOT, "results", _VIDEO_ID)
 
 AUDIO_EXTRACTED_DIR = os.path.join(INTERMEDIATE_DIR, "audio_extracted")
 STEMS_DIR           = os.path.join(INTERMEDIATE_DIR, "stems")
