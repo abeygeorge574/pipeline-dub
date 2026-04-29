@@ -1,0 +1,20 @@
+# Copy this to .envrc and fill in your keys:
+#   cp .envrc.example .envrc
+# Then load before starting Jupyter:
+#   source .envrc
+
+# ── Always required ───────────────────────────────────────────────────────────
+export HF_TOKEN=""
+export GEMINI_API_KEY=""
+export ELEVENLABS_API_KEY=""
+export ELEVENLABS_VOICE_ID=""
+
+# ── Commercial / optional (press Enter to skip in notebooks) ──────────────────
+export AUDIOSHAKE_API_KEY=""
+export ASSEMBLYAI_API_KEY=""
+export DEEPGRAM_API_KEY=""
+export SPEECHMATICS_API_KEY=""
+export OPENAI_API_KEY=""
+export ANTHROPIC_API_KEY=""
+export SYNCSO_API_KEY=""
+export FAL_KEY=""

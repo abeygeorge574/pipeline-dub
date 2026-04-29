@@ -28,18 +28,23 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip setuptools wheel -q
 
 # ── 2. PyTorch ────────────────────────────────────────────────────────────────
-echo "[2/6] Installing PyTorch (CPU fallback — replace with CUDA version if you have a GPU)..."
-echo "      For CUDA: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121"
-pip install torch torchvision torchaudio -q
+if python -c "import subprocess,sys; r=subprocess.run(['nvidia-smi'],capture_output=True); sys.exit(0 if r.returncode==0 else 1)" 2>/dev/null; then
+    echo "[2/6] CUDA GPU detected — installing PyTorch with CUDA 12.1..."
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 -q
+    AUDIO_SEP_EXTRA="gpu"
+else
+    echo "[2/6] No CUDA GPU — installing PyTorch (MPS/CPU)..."
+    pip install torch torchvision torchaudio -q
+    AUDIO_SEP_EXTRA="cpu"
+fi
 
 # ── 3. Core requirements ──────────────────────────────────────────────────────
 echo "[3/6] Installing core requirements..."
 pip install -r "$(dirname "$0")/requirements.txt" -q
 
-# ── 4. audio-separator (choose cpu or gpu) ────────────────────────────────────
-echo "[4/6] Installing audio-separator [cpu]..."
-echo "      If you have a CUDA GPU, rerun: pip install 'audio-separator[gpu]'"
-pip install "audio-separator[cpu]" -q
+# ── 4. audio-separator ───────────────────────────────────────────────────────
+echo "[4/6] Installing audio-separator [${AUDIO_SEP_EXTRA}]..."
+pip install "audio-separator[${AUDIO_SEP_EXTRA}]" -q
 
 # ── 5. WhisperX (must be installed from source, not PyPI) ────────────────────
 echo "[5/6] Installing WhisperX..."
