@@ -11,6 +11,7 @@ Format: `- [ ] Short description — *why deferred*`
 - [ ] Re-evaluate HTDemucs vs BSR on 5+ episodes with ground-truth stems — BSR is SOTA default now but HTDemucs showed lower spectral flatness (0.07 vs 0.47) on jtn.mp4 at heavy music moments; worth a proper head-to-head with SDR/SIR on Bollywood content.
 - [ ] Adaptive ensemble weighting in notebook 02 — use source audio speech/music energy ratio per time window to shift weights dynamically (more speech → weight toward BSR, more music → weight toward HTDemucs). Better than fixed 40/40/20 but requires per-frame VAD on the source mix.
 
+- [ ] VAD-gated assembly in notebook 07 — where Silero VAD detects no speech in vocal track, use original mix audio instead of separated instrumental to fill BSR instrumental holes during music-only segments; needs 10–20ms crossfade at transitions to avoid clicks
 - [ ] Shot detection before lip sync — PySceneDetect per-shot processing beats whole-video; avoids blurring on cuts
 - [ ] COMET-Kiwi referenceless quality gate before TTS — catch bad translations before spending ElevenLabs credits
 - [ ] Subtitle/caption generation from translation output (notebook 05 → SRT export)
