@@ -7,6 +7,10 @@ Format: `- [ ] Short description — *why deferred*`
 
 ## Code / Pipeline Fixes
 
+- [ ] BSR community fine-tune (model_bs_roformer_ep_1296_sdr_13.2804.ckpt) — 0.3 dB SDR gain over official; not in audio-separator model list, needs manual HF download. Test after multi-episode ground-truth evaluation.
+- [ ] Re-evaluate HTDemucs vs BSR on 5+ episodes with ground-truth stems — BSR is SOTA default now but HTDemucs showed lower spectral flatness (0.07 vs 0.47) on jtn.mp4 at heavy music moments; worth a proper head-to-head with SDR/SIR on Bollywood content.
+- [ ] Adaptive ensemble weighting in notebook 02 — use source audio speech/music energy ratio per time window to shift weights dynamically (more speech → weight toward BSR, more music → weight toward HTDemucs). Better than fixed 40/40/20 but requires per-frame VAD on the source mix.
+
 - [ ] Shot detection before lip sync — PySceneDetect per-shot processing beats whole-video; avoids blurring on cuts
 - [ ] COMET-Kiwi referenceless quality gate before TTS — catch bad translations before spending ElevenLabs credits
 - [ ] Subtitle/caption generation from translation output (notebook 05 → SRT export)
